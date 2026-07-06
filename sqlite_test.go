@@ -40,3 +40,55 @@ type test struct {
 func (ts test) execute(t *testing.T) {
 	ts.fn(t, ts.db)
 }
+
+func insertUsers(t *testing.T, db *sqlite.DB) {
+	// TODO insert 5 users
+	// use db.Tx and db.Exec
+}
+
+func selectUsers(t *testing.T, db *sqlite.DB) {
+	// TODO select users and check num of rows returned
+	// use db.Query
+}
+
+func selectUser(t *testing.T, db *sqlite.DB) {
+	// TODO select a single user and check result
+	// use db.QueryRow
+}
+
+func deleteUsers(t *testing.T, db *sqlite.DB) {
+	// TODO delete all users and check num of rows affected
+	// use db.Exec
+}
+
+func TestUser(t *testing.T) {
+	db := setup(t, "test_user.db")
+	tests := []test{
+		{
+			name: "insert users",
+			db:   db,
+			fn:   insertUsers,
+		},
+		{
+			name: "select users",
+			db:   db,
+			fn:   selectUsers,
+		},
+		{
+			name: "select user",
+			db:   db,
+			fn:   selectUser,
+		},
+		{
+			name: "delete users",
+			db:   db,
+			fn:   deleteUsers,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.execute(t)
+		})
+	}
+}

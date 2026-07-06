@@ -67,15 +67,22 @@ func WithMigration(m Migration) Option {
 }
 
 func WithMigrations(files embed.FS) Option {
+	return WithMigrationsDir(files, "migrations")
+}
+
+func WithMigrationsDir(files embed.FS, dir string) Option {
 	return func(db *DB) {
-		entries, _ := files.ReadDir("migrations")
+		entries, err := files.ReadDir(dir)
+		if err != nil {
+			panic(fmt.Errorf("read migrations directory %q: %w", dir, err))
+		}
 
 		for _, entry := range entries {
 			if entry.IsDir() {
 				continue
 			}
 
-			file := fmt.Sprintf("migrations/%s", entry.Name())
+			file := fmt.Sprintf("%s/%s", dir, entry.Name())
 			content, err := files.ReadFile(file)
 
 			if err != nil {
