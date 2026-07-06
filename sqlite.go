@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -168,7 +169,24 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) String() string {
-	panic("not implemented")
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "dsn: %s\n", db.dsn)
+
+	keys := make([]string, 0, len(db.pragmas))
+	for k := range db.pragmas {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "pragma: %s=%s\n", k, db.pragmas[k])
+	}
+
+	for _, m := range db.appliedMigrations {
+		fmt.Fprintf(&b, "migration: %s\n", m)
+	}
+
+	return b.String()
 }
 
 func (db *DB) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {

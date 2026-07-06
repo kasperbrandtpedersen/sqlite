@@ -8,7 +8,7 @@ import (
 	"github.com/kasperbrandtpedersen/sqlite"
 )
 
-//go:embed test_migrations/*.sql
+//go:embed migrations/*.sql
 var migrations embed.FS
 
 func setup(t *testing.T, name string) *sqlite.DB {
@@ -43,7 +43,7 @@ func (ts test) execute(t *testing.T) {
 
 func insertUsers(t *testing.T, db *sqlite.DB) {
 	// TODO insert 5 users
-	// use db.Tx and db.Exec
+	// use db.Begin to get Tx and then Tx.Exec with prepared statement
 }
 
 func selectUsers(t *testing.T, db *sqlite.DB) {
