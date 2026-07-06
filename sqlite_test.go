@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"embed"
+	"fmt"
 	"os"
 	"testing"
 
@@ -42,27 +43,94 @@ func (ts test) execute(t *testing.T) {
 }
 
 func insertUsers(t *testing.T, db *sqlite.DB) {
-	// TODO insert 5 users
-	// use db.Begin to get Tx and then Tx.Exec with prepared statement
+	ctx := t.Context()
+	tx, err := db.Begin(ctx)
+
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO users (name, age) VALUES (?, ?)")
+
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	defer stmt.Close()
+
+	for i := 1; i <= 5; i++ {
+		if _, err := stmt.ExecContext(ctx, fmt.Sprintf("user%d", i), i*10); err != nil {
+			t.Fatalf("insert user%d: %v", i, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
 }
 
 func selectUsers(t *testing.T, db *sqlite.DB) {
-	// TODO select users and check num of rows returned
-	// use db.Query
+	rows, err := db.Query(t.Context(), "SELECT id, name, age FROM users")
+
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer rows.Close()
+
+	count := 0
+
+	for rows.Next() {
+		count++
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+
+	if count != 5 {
+		t.Errorf("expected 5 rows, got %d", count)
+	}
 }
 
 func selectUser(t *testing.T, db *sqlite.DB) {
-	// TODO select a single user and check result
-	// use db.QueryRow
+	var name string
+	var age int
+
+	err := db.QueryRow(t.Context(), "SELECT name, age FROM users WHERE name = ?", "user1").Scan(&name, &age)
+
+	if err != nil {
+		t.Fatalf("query row: %v", err)
+	}
+
+	if name != "user1" {
+		t.Errorf("expected name %q, got %q", "user1", name)
+	}
+
+	if age != 10 {
+		t.Errorf("expected age 10, got %d", age)
+	}
 }
 
 func deleteUsers(t *testing.T, db *sqlite.DB) {
-	// TODO delete all users and check num of rows affected
-	// use db.Exec
+	result, err := db.Exec(t.Context(), "DELETE FROM users")
+
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	affected, err := result.RowsAffected()
+
+	if err != nil {
+		t.Fatalf("rows affected: %v", err)
+	}
+
+	if affected != 5 {
+		t.Errorf("expected 5 rows affected, got %d", affected)
+	}
 }
 
-func TestUser(t *testing.T) {
-	db := setup(t, "test_user.db")
+func TestBasics(t *testing.T) {
+	db := setup(t, "test_users.db")
 	tests := []test{
 		{
 			name: "insert users",
