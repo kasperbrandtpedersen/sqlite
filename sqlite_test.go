@@ -12,6 +12,7 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+// setup creates a clean DB file, opens it with migrations, and registers t.Cleanup to remove it.
 func setup(t *testing.T, name string) *sqlite.DB {
 	t.Helper()
 
@@ -32,6 +33,7 @@ func setup(t *testing.T, name string) *sqlite.DB {
 	return db
 }
 
+// test is a named sub-test with a shared DB and an assertion function.
 type test struct {
 	name string
 	db   *sqlite.DB
@@ -42,6 +44,7 @@ func (ts test) execute(t *testing.T) {
 	ts.fn(t, ts.db)
 }
 
+// insertUsers inserts 5 users via a prepared statement inside a transaction.
 func insertUsers(t *testing.T, db *sqlite.DB) {
 	ctx := t.Context()
 	tx, err := db.Begin(ctx)
@@ -69,6 +72,7 @@ func insertUsers(t *testing.T, db *sqlite.DB) {
 	}
 }
 
+// selectUsers asserts that exactly 5 rows are returned from the users table.
 func selectUsers(t *testing.T, db *sqlite.DB) {
 	rows, err := db.Query(t.Context(), "SELECT id, name, age FROM users")
 
@@ -92,6 +96,7 @@ func selectUsers(t *testing.T, db *sqlite.DB) {
 	}
 }
 
+// selectUser asserts that a single user can be fetched by name with correct field values.
 func selectUser(t *testing.T, db *sqlite.DB) {
 	var name string
 	var age int
@@ -111,6 +116,7 @@ func selectUser(t *testing.T, db *sqlite.DB) {
 	}
 }
 
+// deleteUsers deletes all users and asserts 5 rows were affected.
 func deleteUsers(t *testing.T, db *sqlite.DB) {
 	result, err := db.Exec(t.Context(), "DELETE FROM users")
 

@@ -1,3 +1,4 @@
+// Package sqlite wraps database/sql with opinionated defaults and embedded-FS migration support for SQLite.
 package sqlite
 
 import (
@@ -12,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// DB is a SQLite connection with applied pragmas and migration history.
 type DB struct {
 	db                *sql.DB
 	dsn               string
@@ -20,13 +22,16 @@ type DB struct {
 	appliedMigrations []string
 }
 
+// Migration is a named SQL script applied exactly once, tracked in the migrations table.
 type Migration struct {
 	Name   string
 	Script string
 }
 
+// Option configures a DB before it is opened.
 type Option func(*DB)
 
+// WithPRAGMA sets an arbitrary SQLite PRAGMA at open time.
 func WithPRAGMA(name, value string) Option {
 	return func(db *DB) {
 		db.pragmas[name] = value
@@ -61,16 +66,19 @@ func WithThreads0() Option { return WithPRAGMA("threads", "0") }
 func WithBusyTimeout5S() Option { return WithPRAGMA("busy_timeout", "5000") }
 func WithBusyTimeout1S() Option { return WithPRAGMA("busy_timeout", "1000") }
 
+// WithMigration appends a single migration to the run list.
 func WithMigration(m Migration) Option {
 	return func(db *DB) {
 		db.migrations = append(db.migrations, m)
 	}
 }
 
+// WithMigrations loads all .sql files from the "migrations" directory of the embedded FS.
 func WithMigrations(files embed.FS) Option {
 	return WithMigrationsDir(files, "migrations")
 }
 
+// WithMigrationsDir loads all .sql files from the given directory of the embedded FS.
 func WithMigrationsDir(files embed.FS, dir string) Option {
 	return func(db *DB) {
 		entries, err := files.ReadDir(dir)
@@ -100,6 +108,7 @@ func WithMigrationsDir(files embed.FS, dir string) Option {
 	}
 }
 
+// WithDSN sets the DSN from an environment variable, falling back to the literal value if unset.
 func WithDSN(envVarOrValue string) Option {
 	return func(db *DB) {
 		dsn := os.Getenv(envVarOrValue)
@@ -112,6 +121,7 @@ func WithDSN(envVarOrValue string) Option {
 	}
 }
 
+// Open applies options, sets pragmas, runs pending migrations, and returns a ready DB. Panics on failure.
 func Open(opts ...Option) *DB {
 	db := &DB{
 		pragmas: make(map[string]string),
@@ -147,6 +157,7 @@ func Open(opts ...Option) *DB {
 	return db
 }
 
+// Default opens a DB with production-ready defaults: WAL journal, NORMAL sync, foreign keys, and exclusive locking.
 func Default(dsnEnvVar string, migrations embed.FS) *DB {
 	return Open(
 		WithDSN(dsnEnvVar),
@@ -164,10 +175,12 @@ func Default(dsnEnvVar string, migrations embed.FS) *DB {
 	)
 }
 
+// Close closes the underlying database connection.
 func (db *DB) Close() error {
 	return db.db.Close()
 }
 
+// String returns a debug summary of the DSN, active pragmas, and applied migrations.
 func (db *DB) String() string {
 	var b strings.Builder
 
@@ -189,10 +202,12 @@ func (db *DB) String() string {
 	return b.String()
 }
 
+// Exec runs a write statement and returns the result.
 func (db *DB) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return db.db.ExecContext(ctx, query, args...)
 }
 
+// Begin starts a write transaction. Uses BEGIN IMMEDIATE to acquire the write lock upfront and avoid deadlocks.
 func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 
@@ -200,6 +215,7 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 		return nil, err
 	}
 
+	// ROLLBACK ends the implicit BEGIN from BeginTx, then BEGIN IMMEDIATE acquires the write lock immediately.
 	_, err = tx.ExecContext(ctx, "ROLLBACK; BEGIN IMMEDIATE")
 
 	if err != nil {
@@ -211,14 +227,17 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	return tx, nil
 }
 
+// Query runs a read statement and returns multiple rows.
 func (db *DB) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return db.db.QueryContext(ctx, query, args...)
 }
 
+// QueryRow runs a read statement expected to return at most one row.
 func (db *DB) QueryRow(ctx context.Context, query string, args ...any) *sql.Row {
 	return db.db.QueryRowContext(ctx, query, args...)
 }
 
+// migrate creates the migrations table if absent and applies each pending migration in name order.
 func migrate(ctx context.Context, db *DB) error {
 	const query = "CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) WITHOUT ROWID;"
 
@@ -252,6 +271,7 @@ func migrate(ctx context.Context, db *DB) error {
 	return nil
 }
 
+// apply runs the migration script and records it; a no-op if already applied.
 func (m *Migration) apply(tx *sql.Tx) error {
 	var count int
 
