@@ -14,10 +14,29 @@ import (
 )
 
 // Error is a constant string sentinel for SQLite errors.
-type Error string
+type Error struct {
+	Area   string
+	Action string
+	Err    error
+	Msg    string
+	Params []any
+}
 
-// Error returns the string value of the error.
-func (e Error) Error() string { return string(e) }
+func (err *Error) Error() string {
+	msg := fmt.Sprintf(err.Msg, err.Params...)
+
+	return fmt.Sprintf("sqlite: %s: %s: %s: %W", err.Area, err.Action, msg, err.Err)
+}
+
+func raise(area, action, msg string, err error, params ...any) *Error {
+	return &Error{
+		Area:   area,
+		Action: action,
+		Err:    err,
+		Msg:    msg,
+		Params: params,
+	}
+}
 
 // DB is a SQLite connection with applied pragmas and migration history.
 type DB struct {
@@ -90,7 +109,7 @@ func WithMigrationsDir(files embed.FS, dir string) Option {
 	return func(db *DB) {
 		entries, err := files.ReadDir(dir)
 		if err != nil {
-			panic(fmt.Errorf("read migrations directory %q: %w", dir, err))
+			panic(raise("migrations", "read_dir", "read migrations directory %q", err, dir))
 		}
 
 		for _, entry := range entries {
@@ -102,7 +121,7 @@ func WithMigrationsDir(files embed.FS, dir string) Option {
 			content, err := files.ReadFile(file)
 
 			if err != nil {
-				panic(fmt.Errorf("read migration file **%q**: %w", file, err))
+				panic(raise("migrations", "read_file", "read migration file %q", err, file))
 			}
 
 			migration := Migration{
@@ -141,7 +160,7 @@ func Open(opts ...Option) *DB {
 	sql, err := sql.Open("sqlite", db.dsn)
 
 	if err != nil {
-		panic(fmt.Errorf("open database: %w", err))
+		panic(raise("open", "open", "open database", err))
 	}
 
 	db.db = sql
@@ -151,12 +170,12 @@ func Open(opts ...Option) *DB {
 		stmt := fmt.Sprintf("PRAGMA %s = %s;", key, value)
 
 		if _, err := db.Exec(ctx, stmt); err != nil {
-			panic(fmt.Errorf("write execute **%q**: %w", stmt, err))
+			panic(raise("open", "pragma", "execute pragma %q", err, stmt))
 		}
 	}
 
 	if err := migrate(ctx, db); err != nil {
-		panic(err)
+		panic(raise("open", "migrate", "run migrations", err))
 	} else {
 		db.migrations = nil
 	}
@@ -168,8 +187,8 @@ func Open(opts ...Option) *DB {
 	return db
 }
 
-// Default opens a DB with production-ready defaults: WAL journal, NORMAL sync, foreign keys, and exclusive locking.
-func Default(dsnEnvVar string, migrations embed.FS) *DB {
+// OpenWAL opens a DB with production-ready defaults: WAL journal, NORMAL sync, foreign keys, and exclusive locking.
+func OpenWAL(dsnEnvVar string, migrations embed.FS) *DB {
 	return Open(
 		WithDSN(dsnEnvVar),
 		WithMigrations(migrations),
@@ -186,8 +205,8 @@ func Default(dsnEnvVar string, migrations embed.FS) *DB {
 	)
 }
 
-// Memory opens an in-memory DB with shared cache and foreign keys enabled. Useful for testing.
-func Memory(migrations embed.FS) *DB {
+// OpenMemory opens an in-memory DB with shared cache and foreign keys enabled. Useful for testing.
+func OpenMemory(migrations embed.FS) *DB {
 	return Open(
 		WithDSN(":memory:?cache=shared"),
 		WithMigrations(migrations),
@@ -233,7 +252,7 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 
 	if err != nil {
-		return nil, err
+		return nil, raise("transaction", "begin", "begin transaction", err)
 	}
 
 	// ROLLBACK ends the implicit BEGIN from BeginTx, then BEGIN IMMEDIATE acquires the write lock immediately.
@@ -242,7 +261,7 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	if err != nil {
 		tx.Rollback()
 
-		return nil, err
+		return nil, raise("transaction", "begin_immediate", "begin immediate transaction", err)
 	}
 
 	return tx, nil
@@ -263,7 +282,7 @@ func migrate(ctx context.Context, db *DB) error {
 	const query = "CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) WITHOUT ROWID;"
 
 	if _, err := db.db.Exec(query); err != nil {
-		return fmt.Errorf("failed to create migrations table: %w", err)
+		return raise("migrations", "create_table", "create migrations table", err)
 	}
 
 	sort.Slice(db.migrations, func(i, j int) bool {
@@ -274,16 +293,16 @@ func migrate(ctx context.Context, db *DB) error {
 		tx, err := db.Begin(ctx)
 
 		if err != nil {
-			return err
+			return raise("migrations", "begin", "begin transaction", err)
 		}
 		defer tx.Rollback()
 
 		if err := migration.apply(tx); err != nil {
-			return fmt.Errorf("apply migration **%q**: %w", migration.Name, err)
+			return raise("migrations", "apply", "apply migration %q", err, migration.Name)
 		}
 
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration **%q**: %w", migration.Name, err)
+			return raise("migrations", "commit", "commit migration %q", err, migration.Name)
 		} else {
 			db.appliedMigrations = append(db.appliedMigrations, migration.Name)
 		}
@@ -299,7 +318,7 @@ func (m *Migration) apply(tx *sql.Tx) error {
 	err := tx.QueryRow("SELECT COUNT(1) FROM migrations WHERE name = ?;", m.Name).Scan(&count)
 
 	if err != nil {
-		return err
+		return raise("migration", "check", "check if migration %q was applied", err, m.Name)
 	}
 
 	if count > 0 {
@@ -307,11 +326,11 @@ func (m *Migration) apply(tx *sql.Tx) error {
 	}
 
 	if _, err := tx.Exec(m.Script); err != nil {
-		return fmt.Errorf("failed to execute migration: %w", err)
+		return raise("migration", "execute", "execute migration %q", err, m.Name)
 	}
 
 	if _, err := tx.Exec("INSERT INTO migrations (name) VALUES (?);", m.Name); err != nil {
-		return fmt.Errorf("failed to record migration: %w", err)
+		return raise("migration", "record", "record migration %q", err, m.Name)
 	}
 
 	return nil

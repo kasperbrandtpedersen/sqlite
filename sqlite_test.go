@@ -20,7 +20,7 @@ func setup(t *testing.T, name string) *sqlite.DB {
 	os.Remove(name + "-wal")
 	os.Remove(name)
 
-	db := sqlite.Default(name, migrations)
+	db := sqlite.OpenWAL(name, migrations)
 
 	t.Cleanup(func() {
 		db.Close()

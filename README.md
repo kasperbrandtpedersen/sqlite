@@ -16,11 +16,11 @@ go get github.com/kasperbrandtpedersen/sqlite
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-db := sqlite.Default("DATABASE_DSN", migrations)
+db := sqlite.OpenWAL("DATABASE_DSN", migrations)
 defer db.Close()
 ```
 
-`Default` reads the DSN from the `DATABASE_DSN` environment variable (or uses the value directly if no matching env var exists) and opens the database with sensible production defaults: WAL journal mode, NORMAL synchronous, 64 MB cache, 128 MB mmap, foreign keys on, in-memory temp store, exclusive locking, 4 threads, and a 1 s busy timeout.
+`OpenWAL` reads the DSN from the `DATABASE_DSN` environment variable (or uses the value directly if no matching env var exists) and opens the database with sensible production defaults: WAL journal mode, NORMAL synchronous, 64 MB cache, 128 MB mmap, foreign keys on, in-memory temp store, exclusive locking, 4 threads, and a 1 s busy timeout.
 
 ### Custom configuration
 
