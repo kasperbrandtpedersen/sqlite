@@ -13,6 +13,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Error is a constant string sentinel for SQLite errors.
+type Error string
+
+// Error returns the string value of the error.
+func (e Error) Error() string { return string(e) }
+
 // DB is a SQLite connection with applied pragmas and migration history.
 type DB struct {
 	db                *sql.DB
@@ -20,6 +26,7 @@ type DB struct {
 	pragmas           map[string]string
 	migrations        []Migration
 	appliedMigrations []string
+	isMemory          bool
 }
 
 // Migration is a named SQL script applied exactly once, tracked in the migrations table.
@@ -154,6 +161,10 @@ func Open(opts ...Option) *DB {
 		db.migrations = nil
 	}
 
+	if strings.HasPrefix(db.dsn, ":memory:") {
+		db.isMemory = true
+	}
+
 	return db
 }
 
@@ -172,6 +183,16 @@ func Default(dsnEnvVar string, migrations embed.FS) *DB {
 		WithLockingModeEXCLUSIVE(),
 		WithThreads4(),
 		WithBusyTimeout1S(),
+	)
+}
+
+// Memory opens an in-memory DB with shared cache and foreign keys enabled. Useful for testing.
+func Memory(migrations embed.FS) *DB {
+	return Open(
+		WithDSN(":memory:?cache=shared"),
+		WithMigrations(migrations),
+
+		WithForeignKeysON(),
 	)
 }
 
@@ -207,8 +228,8 @@ func (db *DB) Exec(ctx context.Context, query string, args ...any) (sql.Result, 
 	return db.db.ExecContext(ctx, query, args...)
 }
 
-// BeginImmediate starts a write transaction. Uses BEGIN IMMEDIATE to acquire the write lock upfront and avoid deadlocks.
-func (db *DB) BeginImmediate(ctx context.Context) (*sql.Tx, error) {
+// Begin starts a write transaction. Tries to use BEGIN IMMEDIATE to acquire the write lock upfront and avoid deadlocks.
+func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 
 	if err != nil {
@@ -250,7 +271,7 @@ func migrate(ctx context.Context, db *DB) error {
 	})
 
 	for _, migration := range db.migrations {
-		tx, err := db.BeginImmediate(ctx)
+		tx, err := db.Begin(ctx)
 
 		if err != nil {
 			return err
