@@ -47,7 +47,7 @@ func (ts test) execute(t *testing.T) {
 // insertUsers inserts 5 users via a prepared statement inside a transaction.
 func insertUsers(t *testing.T, db *sqlite.DB) {
 	ctx := t.Context()
-	tx, err := db.Begin(ctx)
+	tx, err := db.BeginImmediate(ctx)
 
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)

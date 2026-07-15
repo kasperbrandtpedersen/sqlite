@@ -207,8 +207,8 @@ func (db *DB) Exec(ctx context.Context, query string, args ...any) (sql.Result, 
 	return db.db.ExecContext(ctx, query, args...)
 }
 
-// Begin starts a write transaction. Uses BEGIN IMMEDIATE to acquire the write lock upfront and avoid deadlocks.
-func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
+// BeginImmediate starts a write transaction. Uses BEGIN IMMEDIATE to acquire the write lock upfront and avoid deadlocks.
+func (db *DB) BeginImmediate(ctx context.Context) (*sql.Tx, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 
 	if err != nil {
@@ -250,7 +250,7 @@ func migrate(ctx context.Context, db *DB) error {
 	})
 
 	for _, migration := range db.migrations {
-		tx, err := db.Begin(ctx)
+		tx, err := db.BeginImmediate(ctx)
 
 		if err != nil {
 			return err
