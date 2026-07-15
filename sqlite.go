@@ -15,20 +15,37 @@ import (
 
 // Error is a constant string sentinel for SQLite errors.
 type Error struct {
-	Area   string
+	// Area is the functional area of the error, e.g. "migrations", "transaction".
+	Area string
+	// Action is the specific action that failed, e.g. "open", "apply", "commit".
 	Action string
-	Err    error
-	Msg    string
+	// Err is the underlying error returned by the database/sql driver.
+	Err error
+	// Msg is a format string describing the error, with Params applied.
+	Msg string
+	// Params are the values to apply to Msg.
 	Params []any
 }
 
+// Unwrap returns the underlying error, enabling errors.Is and errors.As to traverse the chain.
+func (err *Error) Unwrap() error {
+	return err.Err
+}
+
+// Error returns a formatted string describing the error, including the area, action, message, and underlying error.
 func (err *Error) Error() string {
 	msg := fmt.Sprintf(err.Msg, err.Params...)
 
-	return fmt.Sprintf("sqlite: %s: %s: %s: %W", err.Area, err.Action, msg, err.Err)
+	return fmt.Sprintf("sqlite: %s: %s: %s: %v", err.Area, err.Action, msg, err.Err)
 }
 
-func raise(area, action, msg string, err error, params ...any) *Error {
+// String returns the same value as Error(), allowing fmt.Stringer to be used for logging and debugging.
+func (err *Error) String() string {
+	return err.Error()
+}
+
+// Raise creates a new Error with the given area, action, message, underlying error, and optional parameters.
+func Raise(area, action, msg string, err error, params ...any) error {
 	return &Error{
 		Area:   area,
 		Action: action,
@@ -109,7 +126,7 @@ func WithMigrationsDir(files embed.FS, dir string) Option {
 	return func(db *DB) {
 		entries, err := files.ReadDir(dir)
 		if err != nil {
-			panic(raise("migrations", "read_dir", "read migrations directory %q", err, dir))
+			panic(Raise("migrations", "read_dir", "read migrations directory %q", err, dir))
 		}
 
 		for _, entry := range entries {
@@ -121,7 +138,7 @@ func WithMigrationsDir(files embed.FS, dir string) Option {
 			content, err := files.ReadFile(file)
 
 			if err != nil {
-				panic(raise("migrations", "read_file", "read migration file %q", err, file))
+				panic(Raise("migrations", "read_file", "read migration file %q", err, file))
 			}
 
 			migration := Migration{
@@ -160,7 +177,7 @@ func Open(opts ...Option) *DB {
 	sql, err := sql.Open("sqlite", db.dsn)
 
 	if err != nil {
-		panic(raise("open", "open", "open database", err))
+		panic(Raise("open", "open", "open database", err))
 	}
 
 	db.db = sql
@@ -170,12 +187,12 @@ func Open(opts ...Option) *DB {
 		stmt := fmt.Sprintf("PRAGMA %s = %s;", key, value)
 
 		if _, err := db.Exec(ctx, stmt); err != nil {
-			panic(raise("open", "pragma", "execute pragma %q", err, stmt))
+			panic(Raise("open", "pragma", "execute pragma %q", err, stmt))
 		}
 	}
 
 	if err := migrate(ctx, db); err != nil {
-		panic(raise("open", "migrate", "run migrations", err))
+		panic(Raise("open", "migrate", "run migrations", err))
 	} else {
 		db.migrations = nil
 	}
@@ -252,7 +269,7 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 
 	if err != nil {
-		return nil, raise("transaction", "begin", "begin transaction", err)
+		return nil, Raise("transaction", "begin", "begin transaction", err)
 	}
 
 	// ROLLBACK ends the implicit BEGIN from BeginTx, then BEGIN IMMEDIATE acquires the write lock immediately.
@@ -261,7 +278,7 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 	if err != nil {
 		tx.Rollback()
 
-		return nil, raise("transaction", "begin_immediate", "begin immediate transaction", err)
+		return nil, Raise("transaction", "begin_immediate", "begin immediate transaction", err)
 	}
 
 	return tx, nil
@@ -282,7 +299,7 @@ func migrate(ctx context.Context, db *DB) error {
 	const query = "CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) WITHOUT ROWID;"
 
 	if _, err := db.db.Exec(query); err != nil {
-		return raise("migrations", "create_table", "create migrations table", err)
+		return Raise("migrations", "create_table", "create migrations table", err)
 	}
 
 	sort.Slice(db.migrations, func(i, j int) bool {
@@ -293,16 +310,16 @@ func migrate(ctx context.Context, db *DB) error {
 		tx, err := db.Begin(ctx)
 
 		if err != nil {
-			return raise("migrations", "begin", "begin transaction", err)
+			return Raise("migrations", "begin", "begin transaction", err)
 		}
 		defer tx.Rollback()
 
 		if err := migration.apply(tx); err != nil {
-			return raise("migrations", "apply", "apply migration %q", err, migration.Name)
+			return Raise("migrations", "apply", "apply migration %q", err, migration.Name)
 		}
 
 		if err := tx.Commit(); err != nil {
-			return raise("migrations", "commit", "commit migration %q", err, migration.Name)
+			return Raise("migrations", "commit", "commit migration %q", err, migration.Name)
 		} else {
 			db.appliedMigrations = append(db.appliedMigrations, migration.Name)
 		}
@@ -318,7 +335,7 @@ func (m *Migration) apply(tx *sql.Tx) error {
 	err := tx.QueryRow("SELECT COUNT(1) FROM migrations WHERE name = ?;", m.Name).Scan(&count)
 
 	if err != nil {
-		return raise("migration", "check", "check if migration %q was applied", err, m.Name)
+		return Raise("migration", "check", "check if migration %q was applied", err, m.Name)
 	}
 
 	if count > 0 {
@@ -326,11 +343,11 @@ func (m *Migration) apply(tx *sql.Tx) error {
 	}
 
 	if _, err := tx.Exec(m.Script); err != nil {
-		return raise("migration", "execute", "execute migration %q", err, m.Name)
+		return Raise("migration", "execute", "execute migration %q", err, m.Name)
 	}
 
 	if _, err := tx.Exec("INSERT INTO migrations (name) VALUES (?);", m.Name); err != nil {
-		return raise("migration", "record", "record migration %q", err, m.Name)
+		return Raise("migration", "record", "record migration %q", err, m.Name)
 	}
 
 	return nil

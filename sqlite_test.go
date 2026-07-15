@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -132,6 +133,39 @@ func deleteUsers(t *testing.T, db *sqlite.DB) {
 
 	if affected != 5 {
 		t.Errorf("expected 5 rows affected, got %d", affected)
+	}
+}
+
+func TestRaise(t *testing.T) {
+	sentinel := fmt.Errorf("underlying error")
+	err := sqlite.Raise("myarea", "myaction", "something failed with %q", sentinel, "param1")
+
+	var sqlErr *sqlite.Error
+
+	if !errors.As(err, &sqlErr) {
+		t.Fatal("errors.As: expected *sqlite.Error")
+	}
+
+	if sqlErr.Area != "myarea" {
+		t.Errorf("Area: got %q, want %q", sqlErr.Area, "myarea")
+	}
+
+	if sqlErr.Action != "myaction" {
+		t.Errorf("Action: got %q, want %q", sqlErr.Action, "myaction")
+	}
+
+	if sqlErr.Err != sentinel {
+		t.Errorf("Err: got %v, want %v", sqlErr.Err, sentinel)
+	}
+
+	if !errors.Is(err, sentinel) {
+		t.Error("errors.Is: expected to find sentinel via Unwrap")
+	}
+
+	want := `sqlite: myarea: myaction: something failed with "param1": underlying error`
+
+	if err.Error() != want {
+		t.Errorf("Error():\n got  %q\n want %q", err.Error(), want)
 	}
 }
 
