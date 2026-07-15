@@ -135,7 +135,25 @@ func deleteUsers(t *testing.T, db *sqlite.DB) {
 	}
 }
 
-func TestBasics(t *testing.T) {
+func TestOpenMemory(t *testing.T) {
+	db := sqlite.OpenMemory(migrations)
+	t.Cleanup(func() { db.Close() })
+
+	tests := []test{
+		{name: "insert users", db: db, fn: insertUsers},
+		{name: "select users", db: db, fn: selectUsers},
+		{name: "select user", db: db, fn: selectUser},
+		{name: "delete users", db: db, fn: deleteUsers},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.execute(t)
+		})
+	}
+}
+
+func TestOpenWAL(t *testing.T) {
 	db := setup(t, "test_users.db")
 	tests := []test{
 		{
