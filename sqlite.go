@@ -294,6 +294,27 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...any) *sql.Row 
 	return db.db.QueryRowContext(ctx, query, args...)
 }
 
+// ExecContext implements the sql.DB interface for compatibility with database/sql. It runs a write statement and returns the result.
+func (db *DB) ExecContext(ctx context.Context, sql string, params ...any) (sql.Result, error) {
+	return db.Exec(ctx, sql, params...)
+}
+
+// PrepareContext implements the sql.DB interface for compatibility with database/sql. It prepares a statement for later execution.
+func (db *DB) PrepareContext(ctx context.Context, sql string) (*sql.Stmt, error) {
+	return db.db.PrepareContext(ctx, sql)
+}
+
+// QueryContext implements the sql.DB interface for compatibility with database/sql. It runs a read statement and returns multiple rows.
+func (db *DB) QueryContext(ctx context.Context, sql string, params ...any) (*sql.Rows, error) {
+	return db.Query(ctx, sql, params...)
+}
+
+// QueryRowContext implements the sql.DB interface for compatibility with database/sql. It runs a read statement expected to return at most one row.
+func (db *DB) QueryRowContext(ctx context.Context, sql string, params ...any) *sql.Row {
+	return db.QueryRow(ctx, sql, params...)
+
+}
+
 // migrate creates the migrations table if absent and applies each pending migration in name order.
 func migrate(ctx context.Context, db *DB) error {
 	const query = "CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) WITHOUT ROWID;"
