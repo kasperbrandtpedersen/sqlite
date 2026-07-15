@@ -10,7 +10,7 @@ go get github.com/kasperbrandtpedersen/sqlite
 
 ## Usage
 
-### Quick start with defaults
+### Quick start with WAL mode(recommended for production)
 
 ```go
 //go:embed migrations/*.sql
