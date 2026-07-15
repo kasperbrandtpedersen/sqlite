@@ -81,32 +81,58 @@ func WithPRAGMA(name, value string) Option {
 	}
 }
 
-func WithSynchronousOFF() Option    { return WithPRAGMA("synchronous", "OFF") }
-func WithSynchronousNORMAL() Option { return WithPRAGMA("synchronous", "NORMAL") }
-func WithSynchronousFULL() Option   { return WithPRAGMA("synchronous", "FULL") }
-func WithSynchronousEXTRA() Option  { return WithPRAGMA("synchronous", "EXTRA") }
+// WithSynchronousOFF sets synchronous=OFF for maximum write speed. Skips all fsyncs; data may be lost on power failure.
+func WithSynchronousOFF() Option { return WithPRAGMA("synchronous", "OFF") }
 
+// WithSynchronousNORMAL sets synchronous=NORMAL. Safe in WAL mode; fsyncs on WAL checkpoints only.
+func WithSynchronousNORMAL() Option { return WithPRAGMA("synchronous", "NORMAL") }
+
+// WithSynchronousFULL sets synchronous=FULL. Fsyncs on every write; safe in all journal modes.
+func WithSynchronousFULL() Option { return WithPRAGMA("synchronous", "FULL") }
+
+// WithSynchronousEXTRA sets synchronous=EXTRA. Like FULL but also fsyncs the directory after rename; maximum durability.
+func WithSynchronousEXTRA() Option { return WithPRAGMA("synchronous", "EXTRA") }
+
+// WithCacheSize64MB sets the page cache to 64 MB (negative value interpreted as kibibytes by SQLite).
 func WithCacheSize64MB() Option { return WithPRAGMA("cache_size", "-65536") }
 
-func WithMmapSize20GB() Option  { return WithPRAGMA("mmap_size", "20000000000") }
+// WithMmapSize20GB enables memory-mapped I/O up to 20 GB.
+func WithMmapSize20GB() Option { return WithPRAGMA("mmap_size", "20000000000") }
+
+// WithMmapSize128MB enables memory-mapped I/O up to 128 MB.
 func WithMmapSize128MB() Option { return WithPRAGMA("mmap_size", "134217728") }
 
+// WithJournalModeWAL switches to Write-Ahead Logging, enabling concurrent reads during writes.
 func WithJournalModeWAL() Option { return WithPRAGMA("journal_mode", "WAL") }
 
+// WithJournalSizeLimit64MB caps the WAL file at 64 MB; the next checkpoint will truncate it back to this limit.
 func WithJournalSizeLimit64MB() Option { return WithPRAGMA("journal_size_limit", "67108864") }
 
-func WithForeignKeysON() Option  { return WithPRAGMA("foreign_keys", "ON") }
+// WithForeignKeysON enables enforcement of foreign key constraints.
+func WithForeignKeysON() Option { return WithPRAGMA("foreign_keys", "ON") }
+
+// WithForeignKeysOFF disables enforcement of foreign key constraints.
 func WithForeignKeysOFF() Option { return WithPRAGMA("foreign_keys", "OFF") }
 
+// WithTempStoreMEMORY keeps temporary tables and indices in memory instead of on disk.
 func WithTempStoreMEMORY() Option { return WithPRAGMA("temp_store", "MEMORY") }
 
-func WithLockingModeNORMAL() Option    { return WithPRAGMA("locking_mode", "NORMAL") }
+// WithLockingModeNORMAL releases file locks after each transaction, allowing multiple processes to share the file.
+func WithLockingModeNORMAL() Option { return WithPRAGMA("locking_mode", "NORMAL") }
+
+// WithLockingModeEXCLUSIVE holds an exclusive file lock for the lifetime of the connection; prevents other processes from opening the database.
 func WithLockingModeEXCLUSIVE() Option { return WithPRAGMA("locking_mode", "EXCLUSIVE") }
 
+// WithThreads4 allows SQLite to use up to 4 auxiliary threads for sorting and indexing operations.
 func WithThreads4() Option { return WithPRAGMA("threads", "4") }
+
+// WithThreads0 disables auxiliary threads; all work is performed on the calling goroutine.
 func WithThreads0() Option { return WithPRAGMA("threads", "0") }
 
+// WithBusyTimeout5S sets the busy-handler sleep to 5 seconds before returning SQLITE_BUSY.
 func WithBusyTimeout5S() Option { return WithPRAGMA("busy_timeout", "5000") }
+
+// WithBusyTimeout1S sets the busy-handler sleep to 1 second before returning SQLITE_BUSY.
 func WithBusyTimeout1S() Option { return WithPRAGMA("busy_timeout", "1000") }
 
 // WithMigration appends a single migration to the run list.
