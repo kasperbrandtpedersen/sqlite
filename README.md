@@ -2,12 +2,6 @@
 
 Simple SQLite wrappers for Go using [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) (CGo-free).
 
-## Install
-
-```sh
-go get github.com/kasperbrandtpedersen/sqlite
-```
-
 ## Usage
 
 ### Quick start with WAL mode(recommended for production)
